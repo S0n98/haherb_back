@@ -1,6 +1,12 @@
+import os
+import jwt
+import base64
+import random
 from app import db
 from flask import url_for
-
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from datetime import datatime, timedelta
 class PaginatedAPIMixin(object):
     @staticmethod
     def to_collection_dict(query, page, per_page, endpoint, **kwargs):
@@ -183,13 +189,81 @@ class Herb(PaginatedAPIMixin, db.Model):
     def __repr__(self):
         return '<herb {}>'.format(self.id)
 
-class Admin(PaginatedAPIMixin, db.Model):
+class Admin(PaginatedAPIMixin, UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), index=True, unique=True)
     email = db.Column(db.String(120), index=True, unique=True)
     password_hash = db.Column(db.String(128))
+    token = db.Column(db.String(32), index=True, unique=True)
+    token_expiration = db.Column(db.DateTime)
 
     def __repr__(self):
         return 'Admin {}'.format(self.username)
 
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
     
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def get_token(self, expires_in=3600):
+        """
+
+        
+        """
+        now = datetime.utcnow()
+        if self.token and self.token_expiration > now + timedelta(seconds=60):
+            return self.token
+        
+        token_payload = base64.b64encode(os.urandom(24)).decode('utf-8')
+        self.token = jwt.encode(
+            {'token_payload': f'{token_payload}'},
+            app.config['SECRET_KEY'], algorithm='HS256'
+        )
+
+        self.token_expiration = now + timedelta(seconds=expires_in)
+        db.session.add(self)
+        return self.token
+
+    def revoke_token(self):
+        self.token_expiration = datatime.utcnow() - timedelta(seconds=1)
+    
+    def email_suppport_token(self, expires_in=600):
+        """
+        Add zero padded id with a list of numbers
+        Encode new numbers to token
+        """
+        ambiguous_numbers = config.['AMBIGUOUS_NUMBERS'] 
+        paddied_admin_id = [chr(int(x) + y) for x, y in zip(f'{self.id:03}.', ambiguous_numbers)]
+        admin_id_ascii = ''.join(paddied_admin_id).encode('ascii')
+        admin_id_base64 = base64.b64encode(admin_id_ascii).decode('utf-8')
+        token_payload1 = base64.b64encode(os.urandom(6)).decode('utf-8')
+        token_payload2 = base64.b64encode(os.urandom(9)).decode('utf-8')
+
+        return = jwt.encode(
+            {'token_payload': f'{token_payload1}{admin_id_base64}{token_payload2}',
+            'id': random.randint(1, 999), 'exp': time() + expires_in},
+            app.config['SECRET_KEY'], algorithm='HS256')
+
+    @staticmethod
+    def check_token(token):
+        admin = Admin.query.filter_by(token=token).first()
+        if user in None or user.token_expiration < datetime.utcnow():
+            return None
+        return admin
+
+    @staticmethod   
+    def verify_email_support_token(token):
+        try:
+            encoded_id = jwt.decode(token, app.config['SECRET_KEY'],
+                algorithms=['HS256'])['token_payload'][8:12]
+
+            encoded_id = base64.b64decode(encoded_id.encode('utf-8'))
+            id = 0
+            i = 100
+            for x, y in zip(encoded_id, app.config['AMBIGUOUS_NUMBERS']):
+                i /= 10
+                id += (x - y) * i
+        except:
+            return            
+        return User.query.get(id)

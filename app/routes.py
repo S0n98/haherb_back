@@ -2,6 +2,8 @@ from app import app, db
 from app.model import Bioactivity, Herb, Substance
 from flask import jsonify, request, json, url_for, abort
 from app.errors import bad_request
+from flask_login import current_user, login_user
+form app.model import Admin
 
 @app.route('/', methods=['GET'])
 @app.route('/index', methods=['GET'])
@@ -200,3 +202,9 @@ def delete_herb(substance_id):
     db.session.delete(herb)
     db.session.commit()
     return jsonify({'result': True})
+
+@app.route('/api/admin/login')
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('admin'))
+    
